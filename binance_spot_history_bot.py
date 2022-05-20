@@ -18,11 +18,11 @@ def main():
     client = Client(api_key, api_secret)
 
     workbook = xlsxwriter.Workbook(file_name)
-    excel_utils.set_default_format({"align": "center", "valign": "vcenter", "border": 1, "font_size": 12, })
+    excel_utils.set_default_format(workbook, {"align": "center", "valign": "vcenter", "border": 1, "font_size": 12, })
     init_formats(workbook)
 
     for pair in pairs:
-        current_price = round(float(client.get_avg_price(symbol='BTCUSDT')['price']), 2)
+        current_price = round(float(client.get_avg_price(symbol=pair)['price']), 2)
         trades = get_trade_data(client, pair)
         create_pair_sheet(workbook, pair, trades, current_price)
 
@@ -55,40 +55,57 @@ def create_pair_sheet(workbook, pair, trades = None, current_price = None):
     excel_utils.set_table_column(sheet, (3, 4), 'Cost', 10)
     excel_utils.set_table_column(sheet, (3, 5), 'Total Quantity', 18)
     excel_utils.set_table_column(sheet, (3, 6), 'Total Cost', 14)
-    excel_utils.set_table_column(sheet, (3, 7), 'Profit', 10)
+    excel_utils.set_table_column(sheet, (3, 7), 'Profit', 14)
     excel_utils.set_table_column(sheet, (3, 8), 'Profit %', 10)
 
     table_start_row = 4
-    total_quantity = 0
-    total_cost = 0
+    current_price_cell = excel_utils.get_cell_notation(1, 0, True, True)
 
     for i, trade in enumerate(trades):
         
-        total_quantity += trade.quantity
-        total_cost += trade.cost
+        row_index = table_start_row + i
 
-        sheet.write(i + table_start_row, 0, trade.time.strftime("%d/%m/%Y"), excel_utils.book_formats["default"])
-        sheet.write(i + table_start_row, 1, trade.side, excel_utils.book_formats["default"])
-        sheet.write(i + table_start_row, 2, trade.price, excel_utils.book_formats["currency"])	
-        sheet.write(i + table_start_row, 3, trade.quantity, excel_utils.book_formats["default"])
-        sheet.write(i + table_start_row, 4, trade.cost, excel_utils.book_formats["currency"])
-        sheet.write(i + table_start_row, 5, total_quantity, excel_utils.book_formats["default"])
-        sheet.write(i + table_start_row, 6, total_cost, excel_utils.book_formats["currency"])
-        sheet.write(i + table_start_row, 7, "-", excel_utils.book_formats["default"])
-        sheet.write(i + table_start_row, 8, "-", excel_utils.book_formats["default"])
+        quantity_cell = excel_utils.get_cell_notation(row_index, 3, False, False)
+        cost_cell = excel_utils.get_cell_notation(row_index, 4, False, False)
+        profit_cell = excel_utils.get_cell_notation(row_index, 7, False, False)
 
-    count = len(trades)
-    table_end_row = table_start_row + count - 1
+        total_quantity_formula = f"=SUM({excel_utils.get_cell_notation(table_start_row, 3, True, True)}:{quantity_cell})"
+        total_cost_formula = f"=SUM({excel_utils.get_cell_notation(table_start_row, 4, True, True)}:{cost_cell})"
+        profit_formula = f"={current_price_cell} * {quantity_cell} - {cost_cell}"
+        profit_percent_formula = f"={profit_cell} / {cost_cell}"
 
-    price_range = Rect(table_start_row, 2, count - 1, 0)
-    quantity_range = Rect(table_start_row, 3, count - 1, 0)
-    cost_range = Rect(table_start_row, 4, count - 1, 0)
+        sheet.write(row_index, 0, trade.time.strftime("%d/%m/%Y"), excel_utils.book_formats["default"])
+        sheet.write(row_index, 1, trade.side, excel_utils.book_formats["default"])
+        sheet.write(row_index, 2, trade.price, excel_utils.book_formats["currency"])	
+        sheet.write(row_index, 3, trade.quantity, excel_utils.book_formats["default"])
+        sheet.write(row_index, 4, trade.cost, excel_utils.book_formats["currency"])
+        sheet.write(row_index, 5, total_quantity_formula, excel_utils.book_formats["default"])
+        sheet.write(row_index, 6, total_cost_formula, excel_utils.book_formats["currency"])
+        sheet.write(row_index, 7, profit_formula, excel_utils.book_formats["currency"])
+        sheet.write(row_index, 8, profit_percent_formula, excel_utils.book_formats["percentage"])
 
-    sheet.write(table_end_row + 1, 2, excel_utils.get_avg_weighted_formula(price_range, quantity_range), excel_utils.book_formats["currency"])
-    sheet.write(table_end_row + 1, 3, excel_utils.get_sum_range_formula(quantity_range), excel_utils.book_formats["default"])
-    sheet.write(table_end_row + 1, 4, excel_utils.get_avg_weighted_formula(cost_range, quantity_range), excel_utils.book_formats["currency"])
+    count = len(trades) - 1
+    table_end_row = table_start_row + count
 
-    color_range = excel_utils.get_range_notation(Rect(table_start_row, 0, count - 1, 8))
+    price_range = Rect(table_start_row, 2, count, 0)
+    quantity_range = Rect(table_start_row, 3, count, 0)
+    cost_range = Rect(table_start_row, 4, count, 0)
+    total_quantity_range = Rect(table_start_row, 5, count, 0)
+    total_cost_range = Rect(table_start_row, 6, count, 0)
+    profit_range = Rect(table_start_row, 7, count, 0)
+    profit_percent_range = Rect(table_start_row, 8, count, 0)
+
+    total_row = table_end_row + 1
+    current_value_format = f"={excel_utils.get_cell_notation(total_row - 1, 6)} + {excel_utils.get_cell_notation(total_row, 7)}"
+
+    sheet.write(total_row, 2, excel_utils.get_avg_weighted_formula(price_range, quantity_range), excel_utils.book_formats["title-currency"])
+    sheet.write(total_row, 3, excel_utils.get_sum_range_formula(quantity_range), excel_utils.book_formats["title"])
+    sheet.write(total_row, 4, excel_utils.get_sum_range_formula(cost_range), excel_utils.book_formats["title-currency"])
+    sheet.write(total_row, 6, current_value_format, excel_utils.book_formats["title-currency"])
+    sheet.write(total_row, 7, excel_utils.get_sum_range_formula(profit_range), excel_utils.book_formats["title-currency"])
+    sheet.write(total_row, 8, excel_utils.get_avg_weighted_formula(profit_percent_range, quantity_range), excel_utils.book_formats["title-percentage"])
+
+    color_range = excel_utils.get_range_notation(Rect(table_start_row, 0, count, 8))
     side_column_start = excel_utils.get_cell_notation(table_start_row, 1)
 
     sheet.conditional_format(color_range,  {"type": "formula", "criteria": f'=${side_column_start}="BUY"', "format": excel_utils.book_formats["green"]})
@@ -102,10 +119,13 @@ def init_formats(workbook):
     excel_utils.init_format(workbook, 'title', {'bold': True, 'font_size': 14, 'bg_color': '#555555', 'font_color': '#ffffff'})
     excel_utils.init_format(workbook, 'subtitle', {'bold': True, 'font_size': 14,})
     excel_utils.init_format(workbook, 'date', {'num_format': 'dd/mm/yyyy'})
+    excel_utils.init_format(workbook, 'percentage', { 'num_format': '0.00%'})
     excel_utils.init_format(workbook, 'currency', {'num_format': '$#,##0.00'})
     excel_utils.init_format(workbook, 'currency-2', {'num_format': '$#,##0.00', 'bold': True, 'font_size': 14})
     excel_utils.init_format(workbook, 'green', {'font_color': '#006100', 'bg_color': '#C6EFCE'})
     excel_utils.init_format(workbook, 'red', {'font_color': '#9C0006', 'bg_color': '#FFC7CE'})
+    excel_utils.combine_formats(workbook, ['title', 'currency'], 'title-currency')
+    excel_utils.combine_formats(workbook, ['title', 'percentage'], 'title-percentage')
 
 def get_number_format(x):
 

@@ -2,21 +2,21 @@ from framework.geometry.rect import Rect
 from xlsxwriter.utility import xl_rowcol_to_cell
 
 book_formats = {}
-default_format = {
+default_format_properties = {
     "align": "center",
     "valign": "vcenter",
     "border": 1,
     "font_size": 12,
 }
 
+def set_default_format(workbook, default_fmt: dict):
+    default_format_properties.update(default_fmt)
+    init_format(workbook, 'default', default_format_properties)
 
-def set_default_format(default_fmt: dict):
-    default_format.update(default_fmt)
-
-def init_format(workbook, format_name, format_dict):
-    fmt = default_format.copy()
-    fmt.update(format_dict)
-    book_formats[format_name] = workbook.add_format(fmt)
+def init_format(workbook, format_name, properties):
+    fmt_properties = default_format_properties.copy()
+    fmt_properties.update(properties)
+    book_formats[format_name] = workbook.add_format(fmt_properties)
 
 def set_table_column(sheet, cel, name, size):
     sheet.set_column(cel[1], cel[1], size)
@@ -37,5 +37,19 @@ def get_avg_range_formula(rect_range : Rect):
 def get_range_notation(rect_range : Rect):
     return f'{get_cell_notation(*rect_range.min)}:{get_cell_notation(*rect_range.max)}'
 
-def get_cell_notation(row, col):
-    return xl_rowcol_to_cell(row, col)
+def get_cell_notation(row, col, row_abs=False, col_abs=False):
+    return xl_rowcol_to_cell(row, col, row_abs, col_abs)
+
+def get_format_properties(format_name):
+    fmt = book_formats[format_name]
+    dft_fmt = book_formats['default']
+    properties = [f[4:] for f in dir(fmt) if f[0:4] == 'set_']
+    return {key : value for key, value in fmt.__dict__.items() if key in properties and dft_fmt.__dict__[key] != value}
+
+def combine_formats(workbook, format_names : list, format_name : str):
+    combined_format = {}
+    for fmt_name in format_names:
+        fmt_properties = get_format_properties(fmt_name)
+        combined_format.update(fmt_properties)
+
+    init_format(workbook, format_name, combined_format)
